@@ -2,7 +2,7 @@
 
 import crypto from "crypto";
 import { revalidatePath } from "next/cache";
-import { getDb, generateId } from "@/lib/db";
+import { dbGet, dbAll, dbRun, generateId } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { sendMail, buildEventInviteHtml } from "@/lib/mail";
 
@@ -19,33 +19,25 @@ export async function sendEventInviteAction(
     return { error: "イベントIDが必要です", success: "" };
   }
 
-  const db = getDb();
-
-  const event = db
-    .prepare("SELECT * FROM Event WHERE id = ?")
-    .get(eventId) as {
+  const event = await dbGet<{
     id: string;
     title: string;
     description: string;
     date: string;
     location: string;
-  } | undefined;
+  }>("SELECT * FROM Event WHERE id = ?", [eventId]);
 
   if (!event) {
     return { error: "イベントが見つかりません", success: "" };
   }
 
-  const members = db
-    .prepare("SELECT id, email, name FROM User WHERE active = 1")
-    .all() as { id: string; email: string; name: string }[];
+  const members = await dbAll<{ id: string; email: string; name: string }>(
+    "SELECT id, email, name FROM User WHERE active = 1"
+  );
 
   if (members.length === 0) {
     return { error: "アクティブな会員がいません", success: "" };
   }
-
-  const insertInvite = db.prepare(
-    "INSERT OR REPLACE INTO EventInvite (id, eventId, userId, token, status, sentAt) VALUES (?, ?, ?, ?, 'pending', datetime('now'))"
-  );
 
   let sentCount = 0;
   const errors: string[] = [];
@@ -55,7 +47,10 @@ export async function sendEventInviteAction(
     const id = generateId();
 
     try {
-      insertInvite.run(id, eventId, member.id, token);
+      await dbRun(
+        "INSERT OR REPLACE INTO EventInvite (id, eventId, userId, token, status, sentAt) VALUES (?, ?, ?, ?, 'pending', datetime('now'))",
+        [id, eventId, member.id, token]
+      );
 
       const baseUrl = `${APP_URL}/rsvp/${token}`;
 

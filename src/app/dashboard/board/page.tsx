@@ -1,20 +1,12 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { dbAll } from "@/lib/db";
 import { deletePostAction } from "@/lib/actions/post-actions";
 
 export default async function BoardPage() {
   const session = await getSession();
-  const db = getDb();
 
-  const posts = db
-    .prepare(
-      `SELECT p.id, p.title, p.content, p.createdAt, p.authorId, u.name as authorName,
-        (SELECT COUNT(*) FROM Comment WHERE postId = p.id) as commentCount
-       FROM Post p JOIN User u ON p.authorId = u.id
-       ORDER BY p.createdAt DESC`
-    )
-    .all() as {
+  const posts = await dbAll<{
     id: string;
     title: string;
     content: string;
@@ -22,7 +14,12 @@ export default async function BoardPage() {
     authorId: string;
     authorName: string;
     commentCount: number;
-  }[];
+  }>(
+    `SELECT p.id, p.title, p.content, p.createdAt, p.authorId, u.name as authorName,
+      (SELECT COUNT(*) FROM Comment WHERE postId = p.id) as commentCount
+     FROM Post p JOIN User u ON p.authorId = u.id
+     ORDER BY p.createdAt DESC`
+  );
 
   return (
     <div>

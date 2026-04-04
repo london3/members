@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { dbGet } from "@/lib/db";
 import { EventForm } from "../../event-form";
 
 export default async function EditEventPage({
@@ -11,19 +11,17 @@ export default async function EditEventPage({
   await requireAdmin();
   const { id } = await params;
 
-  const db = getDb();
-  const event = db
-    .prepare(
-      "SELECT id, title, description, date, location, capacity FROM Event WHERE id = ?"
-    )
-    .get(id) as {
+  const event = await dbGet<{
     id: string;
     title: string;
     description: string;
     date: string;
     location: string;
     capacity: number | null;
-  } | undefined;
+  }>(
+    "SELECT id, title, description, date, location, capacity FROM Event WHERE id = ?",
+    [id]
+  );
 
   if (!event) notFound();
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getDb, generateId } from "@/lib/db";
+import { dbGet, dbRun, generateId } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 
 export async function createMemberAction(
@@ -18,19 +18,19 @@ export async function createMemberAction(
     return { error: "メールアドレスと名前は必須です" };
   }
 
-  const db = getDb();
-
-  const existing = db
-    .prepare("SELECT id FROM User WHERE email = ?")
-    .get(email);
+  const existing = await dbGet<{ id: string }>(
+    "SELECT id FROM User WHERE email = ?",
+    [email]
+  );
 
   if (existing) {
     return { error: "このメールアドレスは既に登録されています" };
   }
 
-  db.prepare(
-    "INSERT INTO User (id, email, name, role, active, createdAt, updatedAt) VALUES (?, ?, ?, 'member', 1, datetime('now'), datetime('now'))"
-  ).run(generateId(), email, name);
+  await dbRun(
+    "INSERT INTO User (id, email, name, role, active, createdAt, updatedAt) VALUES (?, ?, ?, 'member', 1, datetime('now'), datetime('now'))",
+    [generateId(), email, name]
+  );
 
   revalidatePath("/dashboard/members");
   redirect("/dashboard/members");
@@ -51,19 +51,19 @@ export async function updateMemberAction(
     return { error: "必須項目を入力してください" };
   }
 
-  const db = getDb();
-
-  const existing = db
-    .prepare("SELECT id FROM User WHERE email = ? AND id != ?")
-    .get(email, id);
+  const existing = await dbGet<{ id: string }>(
+    "SELECT id FROM User WHERE email = ? AND id != ?",
+    [email, id]
+  );
 
   if (existing) {
     return { error: "このメールアドレスは既に使用されています" };
   }
 
-  db.prepare(
-    "UPDATE User SET email = ?, name = ?, active = ?, updatedAt = datetime('now') WHERE id = ?"
-  ).run(email, name, active, id);
+  await dbRun(
+    "UPDATE User SET email = ?, name = ?, active = ?, updatedAt = datetime('now') WHERE id = ?",
+    [email, name, active, id]
+  );
 
   revalidatePath("/dashboard/members");
   redirect("/dashboard/members");
@@ -75,8 +75,7 @@ export async function deleteMemberAction(formData: FormData) {
   const id = formData.get("id") as string;
   if (!id) return;
 
-  const db = getDb();
-  db.prepare("DELETE FROM User WHERE id = ? AND role != 'admin'").run(id);
+  await dbRun("DELETE FROM User WHERE id = ? AND role != 'admin'", [id]);
 
   revalidatePath("/dashboard/members");
 }

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getDb, generateId } from "@/lib/db";
+import { dbRun, generateId } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 
 export async function createPostAction(
@@ -18,12 +18,12 @@ export async function createPostAction(
     return { error: "タイトルと内容は必須です" };
   }
 
-  const db = getDb();
   const id = generateId();
 
-  db.prepare(
-    "INSERT INTO Post (id, title, content, authorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
-  ).run(id, title, content, session.id);
+  await dbRun(
+    "INSERT INTO Post (id, title, content, authorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
+    [id, title, content, session.id]
+  );
 
   revalidatePath("/dashboard/board");
   redirect("/dashboard/board");
@@ -42,11 +42,10 @@ export async function createCommentAction(
     return { error: "コメントを入力してください" };
   }
 
-  const db = getDb();
-
-  db.prepare(
-    "INSERT INTO Comment (id, content, postId, authorId, createdAt) VALUES (?, ?, ?, ?, datetime('now'))"
-  ).run(generateId(), content, postId, session.id);
+  await dbRun(
+    "INSERT INTO Comment (id, content, postId, authorId, createdAt) VALUES (?, ?, ?, ?, datetime('now'))",
+    [generateId(), content, postId, session.id]
+  );
 
   revalidatePath(`/dashboard/board/${postId}`);
   return { error: "" };
@@ -58,15 +57,13 @@ export async function deletePostAction(formData: FormData) {
   const id = formData.get("id") as string;
   if (!id) return;
 
-  const db = getDb();
-  // Only author or admin can delete
   if (session.role === "admin") {
-    db.prepare("DELETE FROM Post WHERE id = ?").run(id);
+    await dbRun("DELETE FROM Post WHERE id = ?", [id]);
   } else {
-    db.prepare("DELETE FROM Post WHERE id = ? AND authorId = ?").run(
+    await dbRun("DELETE FROM Post WHERE id = ? AND authorId = ?", [
       id,
-      session.id
-    );
+      session.id,
+    ]);
   }
 
   revalidatePath("/dashboard/board");

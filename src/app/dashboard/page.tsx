@@ -1,32 +1,31 @@
 import { getSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { dbGet, dbAll } from "@/lib/db";
 import Link from "next/link";
 
 export default async function DashboardPage() {
   const session = await getSession();
-  const db = getDb();
 
-  const memberCount = db
-    .prepare("SELECT COUNT(*) as count FROM User WHERE active = 1")
-    .get() as { count: number };
-  const postCount = db
-    .prepare("SELECT COUNT(*) as count FROM Post")
-    .get() as { count: number };
-  const eventCount = db
-    .prepare("SELECT COUNT(*) as count FROM Event WHERE date >= datetime('now')")
-    .get() as { count: number };
+  const memberCount = await dbGet<{ count: number }>(
+    "SELECT COUNT(*) as count FROM User WHERE active = 1"
+  );
+  const postCount = await dbGet<{ count: number }>(
+    "SELECT COUNT(*) as count FROM Post"
+  );
+  const eventCount = await dbGet<{ count: number }>(
+    "SELECT COUNT(*) as count FROM Event WHERE date >= datetime('now')"
+  );
 
-  const recentPosts = db
-    .prepare(
-      "SELECT p.id, p.title, p.createdAt, u.name as authorName FROM Post p JOIN User u ON p.authorId = u.id ORDER BY p.createdAt DESC LIMIT 5"
-    )
-    .all() as { id: string; title: string; createdAt: string; authorName: string }[];
+  const recentPosts = await dbAll<{
+    id: string; title: string; createdAt: string; authorName: string;
+  }>(
+    "SELECT p.id, p.title, p.createdAt, u.name as authorName FROM Post p JOIN User u ON p.authorId = u.id ORDER BY p.createdAt DESC LIMIT 5"
+  );
 
-  const upcomingEvents = db
-    .prepare(
-      "SELECT id, title, date, location FROM Event WHERE date >= datetime('now') ORDER BY date ASC LIMIT 5"
-    )
-    .all() as { id: string; title: string; date: string; location: string }[];
+  const upcomingEvents = await dbAll<{
+    id: string; title: string; date: string; location: string;
+  }>(
+    "SELECT id, title, date, location FROM Event WHERE date >= datetime('now') ORDER BY date ASC LIMIT 5"
+  );
 
   return (
     <div>
@@ -39,19 +38,19 @@ export default async function DashboardPage() {
         <div className="bg-white rounded-xl shadow-sm p-6 border">
           <p className="text-sm text-gray-500 mb-1">アクティブ会員</p>
           <p className="text-3xl font-bold text-blue-600">
-            {memberCount.count}
+            {memberCount?.count ?? 0}
           </p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-6 border">
           <p className="text-sm text-gray-500 mb-1">掲示板投稿数</p>
           <p className="text-3xl font-bold text-green-600">
-            {postCount.count}
+            {postCount?.count ?? 0}
           </p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-6 border">
           <p className="text-sm text-gray-500 mb-1">今後のイベント</p>
           <p className="text-3xl font-bold text-purple-600">
-            {eventCount.count}
+            {eventCount?.count ?? 0}
           </p>
         </div>
       </div>

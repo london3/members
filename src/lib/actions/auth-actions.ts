@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { getDb } from "@/lib/db";
+import { dbGet } from "@/lib/db";
 import { createSession } from "@/lib/auth";
 
 export async function loginAction(
@@ -17,10 +17,10 @@ export async function loginAction(
     return { error: "メールアドレスとパスワードを入力してください" };
   }
 
-  const db = getDb();
-  const user = db
-    .prepare("SELECT * FROM User WHERE email = ? AND role = 'admin'")
-    .get(email) as { id: string; password: string | null } | undefined;
+  const user = await dbGet<{ id: string; password: string | null }>(
+    "SELECT * FROM User WHERE email = ? AND role = 'admin'",
+    [email]
+  );
 
   if (!user || !user.password) {
     return { error: "メールアドレスまたはパスワードが正しくありません" };
@@ -54,17 +54,15 @@ export async function memberLoginAction(
     return { error: "メールアドレスを入力してください" };
   }
 
-  const db = getDb();
-  const user = db
-    .prepare("SELECT * FROM User WHERE email = ? AND active = 1")
-    .get(email) as { id: string; role: string } | undefined;
+  const user = await dbGet<{ id: string; role: string }>(
+    "SELECT * FROM User WHERE email = ? AND active = 1",
+    [email]
+  );
 
   if (!user) {
     return { error: "登録されていないメールアドレスです" };
   }
 
-  // For simplicity in dev: directly create session for members
-  // In production, you'd send a magic link email
   const token = await createSession(user.id);
   const cookieStore = await cookies();
   cookieStore.set("session", token, {

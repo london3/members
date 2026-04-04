@@ -1,17 +1,36 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { createClient, type Client, type InValue } from "@libsql/client";
 
-const dbPath = path.join(process.cwd(), "prisma", "dev.db");
+let _client: Client | null = null;
 
-let _db: Database.Database | null = null;
-
-export function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(dbPath);
-    _db.pragma("journal_mode = WAL");
-    _db.pragma("foreign_keys = ON");
+export function getClient(): Client {
+  if (!_client) {
+    _client = createClient({
+      url: process.env.TURSO_DATABASE_URL || "file:./prisma/dev.db",
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
   }
-  return _db;
+  return _client;
+}
+
+// Helper: SELECT single row
+export async function dbGet<T>(sql: string, args: InValue[] = []): Promise<T | undefined> {
+  const client = getClient();
+  const result = await client.execute({ sql, args });
+  if (result.rows.length === 0) return undefined;
+  return result.rows[0] as unknown as T;
+}
+
+// Helper: SELECT multiple rows
+export async function dbAll<T>(sql: string, args: InValue[] = []): Promise<T[]> {
+  const client = getClient();
+  const result = await client.execute({ sql, args });
+  return result.rows as unknown as T[];
+}
+
+// Helper: INSERT/UPDATE/DELETE
+export async function dbRun(sql: string, args: InValue[] = []) {
+  const client = getClient();
+  return client.execute({ sql, args });
 }
 
 // Helper to generate cuid-like IDs

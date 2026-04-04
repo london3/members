@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getDb } from "@/lib/db";
+import { dbGet, dbAll } from "@/lib/db";
 import { CommentForm } from "./comment-form";
 
 export default async function PostDetailPage({
@@ -9,32 +9,29 @@ export default async function PostDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const db = getDb();
 
-  const post = db
-    .prepare(
-      "SELECT p.*, u.name as authorName FROM Post p JOIN User u ON p.authorId = u.id WHERE p.id = ?"
-    )
-    .get(id) as {
+  const post = await dbGet<{
     id: string;
     title: string;
     content: string;
     createdAt: string;
     authorName: string;
-  } | undefined;
+  }>(
+    "SELECT p.*, u.name as authorName FROM Post p JOIN User u ON p.authorId = u.id WHERE p.id = ?",
+    [id]
+  );
 
   if (!post) notFound();
 
-  const comments = db
-    .prepare(
-      "SELECT c.*, u.name as authorName FROM Comment c JOIN User u ON c.authorId = u.id WHERE c.postId = ? ORDER BY c.createdAt ASC"
-    )
-    .all(id) as {
+  const comments = await dbAll<{
     id: string;
     content: string;
     createdAt: string;
     authorName: string;
-  }[];
+  }>(
+    "SELECT c.*, u.name as authorName FROM Comment c JOIN User u ON c.authorId = u.id WHERE c.postId = ? ORDER BY c.createdAt ASC",
+    [id]
+  );
 
   return (
     <div className="max-w-3xl">

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { dbGet } from "@/lib/db";
 import { MemberForm } from "../../member-form";
 
 export default async function EditMemberPage({
@@ -11,10 +11,9 @@ export default async function EditMemberPage({
   await requireAdmin();
   const { id } = await params;
 
-  const db = getDb();
-  const member = db
-    .prepare("SELECT id, email, name, active FROM User WHERE id = ?")
-    .get(id) as { id: string; email: string; name: string; active: number } | undefined;
+  const member = await dbGet<{
+    id: string; email: string; name: string; active: number;
+  }>("SELECT id, email, name, active FROM User WHERE id = ?", [id]);
 
   if (!member) notFound();
 

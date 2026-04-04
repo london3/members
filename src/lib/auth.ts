@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import jwt from "jsonwebtoken";
-import { getDb } from "./db";
+import { dbGet } from "./db";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -13,10 +13,10 @@ export interface SessionUser {
 }
 
 export async function createSession(userId: string): Promise<string> {
-  const db = getDb();
-  const user = db
-    .prepare("SELECT id, email, name, role FROM User WHERE id = ?")
-    .get(userId) as SessionUser | undefined;
+  const user = await dbGet<SessionUser>(
+    "SELECT id, email, name, role FROM User WHERE id = ?",
+    [userId]
+  );
   if (!user) throw new Error("User not found");
 
   const token = jwt.sign(

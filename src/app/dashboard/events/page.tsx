@@ -1,20 +1,12 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { dbAll } from "@/lib/db";
 import { deleteEventAction } from "@/lib/actions/event-actions";
 
 export default async function EventsPage() {
   const session = await getSession();
-  const db = getDb();
 
-  const events = db
-    .prepare(
-      `SELECT e.*, u.name as creatorName,
-        (SELECT COUNT(*) FROM EventRsvp WHERE eventId = e.id AND status = 'attending') as attendeeCount
-       FROM Event e JOIN User u ON e.createdById = u.id
-       ORDER BY e.date ASC`
-    )
-    .all() as {
+  const events = await dbAll<{
     id: string;
     title: string;
     description: string;
@@ -23,7 +15,12 @@ export default async function EventsPage() {
     capacity: number | null;
     creatorName: string;
     attendeeCount: number;
-  }[];
+  }>(
+    `SELECT e.*, u.name as creatorName,
+      (SELECT COUNT(*) FROM EventRsvp WHERE eventId = e.id AND status = 'attending') as attendeeCount
+     FROM Event e JOIN User u ON e.createdById = u.id
+     ORDER BY e.date ASC`
+  );
 
   const now = new Date();
   const upcoming = events.filter((e) => new Date(e.date) >= now);

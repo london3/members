@@ -1,4 +1,4 @@
-import { getDb, generateId } from "@/lib/db";
+import { dbGet, dbRun, generateId } from "@/lib/db";
 import Link from "next/link";
 
 const statusLabels: Record<string, string> = {
@@ -23,17 +23,7 @@ export default async function RsvpPage({
   const { token } = await params;
   const { status } = await searchParams;
 
-  const db = getDb();
-
-  const invite = db
-    .prepare(
-      `SELECT ei.*, e.title as eventTitle, e.date as eventDate, e.location as eventLocation, u.name as userName
-       FROM EventInvite ei
-       JOIN Event e ON ei.eventId = e.id
-       JOIN User u ON ei.userId = u.id
-       WHERE ei.token = ?`
-    )
-    .get(token) as {
+  const invite = await dbGet<{
     id: string;
     eventId: string;
     userId: string;
@@ -44,7 +34,14 @@ export default async function RsvpPage({
     eventDate: string;
     eventLocation: string;
     userName: string;
-  } | undefined;
+  }>(
+    `SELECT ei.*, e.title as eventTitle, e.date as eventDate, e.location as eventLocation, u.name as userName
+     FROM EventInvite ei
+     JOIN Event e ON ei.eventId = e.id
+     JOIN User u ON ei.userId = u.id
+     WHERE ei.token = ?`,
+    [token]
+  );
 
   if (!invite) {
     return (
@@ -63,29 +60,33 @@ export default async function RsvpPage({
 
   if (status && validStatuses.includes(status)) {
     // Update invite status
-    db.prepare(
-      "UPDATE EventInvite SET status = ?, respondedAt = datetime('now') WHERE id = ?"
-    ).run(status, invite.id);
+    await dbRun(
+      "UPDATE EventInvite SET status = ?, respondedAt = datetime('now') WHERE id = ?",
+      [status, invite.id]
+    );
 
     // Also update/create EventRsvp for dashboard display
     if (status === "declined") {
-      db.prepare(
-        "DELETE FROM EventRsvp WHERE eventId = ? AND userId = ?"
-      ).run(invite.eventId, invite.userId);
+      await dbRun(
+        "DELETE FROM EventRsvp WHERE eventId = ? AND userId = ?",
+        [invite.eventId, invite.userId]
+      );
     } else {
-      const existingRsvp = db
-        .prepare("SELECT id FROM EventRsvp WHERE eventId = ? AND userId = ?")
-        .get(invite.eventId, invite.userId) as { id: string } | undefined;
+      const existingRsvp = await dbGet<{ id: string }>(
+        "SELECT id FROM EventRsvp WHERE eventId = ? AND userId = ?",
+        [invite.eventId, invite.userId]
+      );
 
       if (existingRsvp) {
-        db.prepare("UPDATE EventRsvp SET status = ? WHERE id = ?").run(
+        await dbRun("UPDATE EventRsvp SET status = ? WHERE id = ?", [
           status,
-          existingRsvp.id
-        );
+          existingRsvp.id,
+        ]);
       } else {
-        db.prepare(
-          "INSERT INTO EventRsvp (id, eventId, userId, status) VALUES (?, ?, ?, ?)"
-        ).run(generateId(), invite.eventId, invite.userId, status);
+        await dbRun(
+          "INSERT INTO EventRsvp (id, eventId, userId, status) VALUES (?, ?, ?, ?)",
+          [generateId(), invite.eventId, invite.userId, status]
+        );
       }
     }
 

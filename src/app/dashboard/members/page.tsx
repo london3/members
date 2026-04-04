@@ -1,24 +1,21 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { dbAll } from "@/lib/db";
 import { DeleteMemberButton } from "./delete-button";
 
 export default async function MembersPage() {
   await requireAdmin();
-  const db = getDb();
 
-  const members = db
-    .prepare(
-      "SELECT id, email, name, role, active, createdAt FROM User ORDER BY createdAt DESC"
-    )
-    .all() as {
+  const members = await dbAll<{
     id: string;
     email: string;
     name: string;
     role: string;
     active: number;
     createdAt: string;
-  }[];
+  }>(
+    "SELECT id, email, name, role, active, createdAt FROM User ORDER BY createdAt DESC"
+  );
 
   return (
     <div>

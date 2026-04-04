@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { dbGet, dbAll } from "@/lib/db";
 import { RsvpButtons } from "./rsvp-buttons";
 import { InviteButton } from "./invite-button";
 
@@ -12,13 +12,8 @@ export default async function EventDetailPage({
 }) {
   const { id } = await params;
   const session = await getSession();
-  const db = getDb();
 
-  const event = db
-    .prepare(
-      "SELECT e.*, u.name as creatorName FROM Event e JOIN User u ON e.createdById = u.id WHERE e.id = ?"
-    )
-    .get(id) as {
+  const event = await dbGet<{
     id: string;
     title: string;
     description: string;
@@ -26,28 +21,58 @@ export default async function EventDetailPage({
     location: string;
     capacity: number | null;
     creatorName: string;
-  } | undefined;
+  }>(
+    "SELECT e.*, u.name as creatorName FROM Event e JOIN User u ON e.createdById = u.id WHERE e.id = ?",
+    [id]
+  );
 
   if (!event) notFound();
 
-  const rsvps = db
-    .prepare(
-      "SELECT er.status, u.name FROM EventRsvp er JOIN User u ON er.userId = u.id WHERE er.eventId = ? ORDER BY u.name"
-    )
-    .all(id) as { status: string; name: string }[];
+  const rsvps = await dbAll<{ status: string; name: string }>(
+    "SELECT er.status, u.name FROM EventRsvp er JOIN User u ON er.userId = u.id WHERE er.eventId = ? ORDER BY u.name",
+    [id]
+  );
 
   const myRsvp = session
-    ? (db
-        .prepare(
-          "SELECT status FROM EventRsvp WHERE eventId = ? AND userId = ?"
-        )
-        .get(id, session.id) as { status: string } | undefined)
+    ? await dbGet<{ status: string }>(
+        "SELECT status FROM EventRsvp WHERE eventId = ? AND userId = ?",
+        [id, session.id]
+      )
     : undefined;
 
   const attending = rsvps.filter((r) => r.status === "attending");
   const maybe = rsvps.filter((r) => r.status === "maybe");
 
   const isPast = new Date(event.date) < new Date();
+
+  // Fetch invite status for admin
+  const invites = session?.role === "admin"
+    ? await dbAll<{
+        status: string;
+        sentAt: string;
+        respondedAt: string | null;
+        name: string;
+        email: string;
+      }>(
+        `SELECT ei.status, ei.sentAt, ei.respondedAt, u.name, u.email
+         FROM EventInvite ei JOIN User u ON ei.userId = u.id
+         WHERE ei.eventId = ? ORDER BY u.name`,
+        [id]
+      )
+    : [];
+
+  const statusLabel: Record<string, string> = {
+    pending: "未回答",
+    attending: "参加",
+    maybe: "未定",
+    declined: "不参加",
+  };
+  const statusColor: Record<string, string> = {
+    pending: "bg-gray-100 text-gray-600",
+    attending: "bg-green-50 text-green-700",
+    maybe: "bg-yellow-50 text-yellow-700",
+    declined: "bg-red-50 text-red-700",
+  };
 
   return (
     <div className="max-w-3xl">
@@ -113,54 +138,29 @@ export default async function EventDetailPage({
       </div>
 
       {/* Invite Status */}
-      {session?.role === "admin" && (() => {
-        const invites = db
-          .prepare(
-            `SELECT ei.status, ei.sentAt, ei.respondedAt, u.name, u.email
-             FROM EventInvite ei JOIN User u ON ei.userId = u.id
-             WHERE ei.eventId = ? ORDER BY u.name`
-          )
-          .all(id) as { status: string; sentAt: string; respondedAt: string | null; name: string; email: string }[];
-
-        if (invites.length === 0) return null;
-
-        const statusLabel: Record<string, string> = {
-          pending: "未回答",
-          attending: "参加",
-          maybe: "未定",
-          declined: "不参加",
-        };
-        const statusColor: Record<string, string> = {
-          pending: "bg-gray-100 text-gray-600",
-          attending: "bg-green-50 text-green-700",
-          maybe: "bg-yellow-50 text-yellow-700",
-          declined: "bg-red-50 text-red-700",
-        };
-
-        return (
-          <div className="bg-white rounded-xl shadow-sm border mb-6">
-            <div className="p-5 border-b">
-              <h2 className="font-semibold">メール出欠回答状況</h2>
-              <p className="text-xs text-gray-500 mt-1">
-                回答: {invites.filter(i => i.status !== "pending").length}/{invites.length}名
-              </p>
-            </div>
-            <div className="divide-y">
-              {invites.map((inv, i) => (
-                <div key={i} className="px-5 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{inv.name}</p>
-                    <p className="text-xs text-gray-400">{inv.email}</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColor[inv.status] || statusColor.pending}`}>
-                    {statusLabel[inv.status] || inv.status}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {session?.role === "admin" && invites.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border mb-6">
+          <div className="p-5 border-b">
+            <h2 className="font-semibold">メール出欠回答状況</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              回答: {invites.filter((i) => i.status !== "pending").length}/{invites.length}名
+            </p>
           </div>
-        );
-      })()}
+          <div className="divide-y">
+            {invites.map((inv, i) => (
+              <div key={i} className="px-5 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{inv.name}</p>
+                  <p className="text-xs text-gray-400">{inv.email}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColor[inv.status] || statusColor.pending}`}>
+                  {statusLabel[inv.status] || inv.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Attendee List */}
       <div className="bg-white rounded-xl shadow-sm border">

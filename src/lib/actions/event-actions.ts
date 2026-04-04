@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getDb, generateId } from "@/lib/db";
+import { dbGet, dbRun, generateId } from "@/lib/db";
 import { requireSession, requireAdmin } from "@/lib/auth";
 
 export async function createEventAction(
@@ -22,12 +22,12 @@ export async function createEventAction(
     return { error: "全ての必須項目を入力してください" };
   }
 
-  const db = getDb();
   const id = generateId();
 
-  db.prepare(
-    "INSERT INTO Event (id, title, description, date, location, capacity, createdById, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
-  ).run(id, title, description, date, location, capacity, session.id);
+  await dbRun(
+    "INSERT INTO Event (id, title, description, date, location, capacity, createdById, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+    [id, title, description, date, location, capacity, session.id]
+  );
 
   revalidatePath("/dashboard/events");
   redirect("/dashboard/events");
@@ -51,11 +51,10 @@ export async function updateEventAction(
     return { error: "全ての必須項目を入力してください" };
   }
 
-  const db = getDb();
-
-  db.prepare(
-    "UPDATE Event SET title = ?, description = ?, date = ?, location = ?, capacity = ?, updatedAt = datetime('now') WHERE id = ?"
-  ).run(title, description, date, location, capacity, id);
+  await dbRun(
+    "UPDATE Event SET title = ?, description = ?, date = ?, location = ?, capacity = ?, updatedAt = datetime('now') WHERE id = ?",
+    [title, description, date, location, capacity, id]
+  );
 
   revalidatePath("/dashboard/events");
   redirect("/dashboard/events");
@@ -69,25 +68,25 @@ export async function rsvpAction(formData: FormData) {
 
   if (!eventId || !status) return;
 
-  const db = getDb();
-
-  const existing = db
-    .prepare("SELECT id FROM EventRsvp WHERE eventId = ? AND userId = ?")
-    .get(eventId, session.id) as { id: string } | undefined;
+  const existing = await dbGet<{ id: string }>(
+    "SELECT id FROM EventRsvp WHERE eventId = ? AND userId = ?",
+    [eventId, session.id]
+  );
 
   if (existing) {
     if (status === "cancel") {
-      db.prepare("DELETE FROM EventRsvp WHERE id = ?").run(existing.id);
+      await dbRun("DELETE FROM EventRsvp WHERE id = ?", [existing.id]);
     } else {
-      db.prepare("UPDATE EventRsvp SET status = ? WHERE id = ?").run(
+      await dbRun("UPDATE EventRsvp SET status = ? WHERE id = ?", [
         status,
-        existing.id
-      );
+        existing.id,
+      ]);
     }
   } else if (status !== "cancel") {
-    db.prepare(
-      "INSERT INTO EventRsvp (id, eventId, userId, status) VALUES (?, ?, ?, ?)"
-    ).run(generateId(), eventId, session.id, status);
+    await dbRun(
+      "INSERT INTO EventRsvp (id, eventId, userId, status) VALUES (?, ?, ?, ?)",
+      [generateId(), eventId, session.id, status]
+    );
   }
 
   revalidatePath(`/dashboard/events/${eventId}`);
@@ -100,8 +99,7 @@ export async function deleteEventAction(formData: FormData) {
   const id = formData.get("id") as string;
   if (!id) return;
 
-  const db = getDb();
-  db.prepare("DELETE FROM Event WHERE id = ?").run(id);
+  await dbRun("DELETE FROM Event WHERE id = ?", [id]);
 
   revalidatePath("/dashboard/events");
 }
